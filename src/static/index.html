@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Recomendação de Produtos Locais</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding-top: 56px;
+        }
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .card {
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-header {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .badge-organic {
+            background-color: #28a745;
+            color: white;
+        }
+        .badge-seasonal {
+            background-color: #fd7e14;
+            color: white;
+        }
+        .star-rating {
+            color: #ffc107;
+        }
+        .empty-star {
+            color: #e2e2e2;
+        }
+        .filter-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .month-selector {
+            margin-bottom: 15px;
+        }
+        .rating-input {
+            display: inline-block;
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+        .seasonal-months {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .price {
+            font-weight: bold;
+            color: #28a745;
+        }
+        .distance {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .recommendation-score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255,255,255,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-leaf me-2"></i>
+                Produtos Locais DF
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#map-section">Mapa</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#products-section">Produtos</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#recommendations-section">Recomendações</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Bem-vindo ao sistema de recomendação de produtos locais! Utilize o mapa para encontrar associações próximas a você e descubra produtos frescos e sazonais.
+                </div>
+            </div>
+        </div>
+
+        <section id="map-section" class="mb-5">
+            <h2 class="mb-3">
+                <i class="fas fa-map-marker-alt me-2"></i>
+                Mapa de Associações
+            </h2>
+            <div class="row">
+                <div class="col-md-12">
+                    <div id="map"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="filter-section" class="mb-5">
+            <div class="filter-section">
+                <h3 class="mb-3">
+                    <i class="fas fa-filter me-2"></i>
+                    Filtros
+                </h3>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group month-selector">
+                            <label for="month-select">Mês de Disponibilidade:</label>
+                            <select id="month-select" class="form-select">
+                                <option value="1">Janeiro</option>
+                                <option value="2">Fevereiro</option>
+                                <option value="3">Março</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Maio</option>
+                                <option value="6">Junho</option>
+                                <option value="7">Julho</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Setembro</option>
+                                <option value="10">Outubro</option>
+                                <option value="11">Novembro</option>
+                                <option value="12">Dezembro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="organic-only">
+                            <label class="form-check-label" for="organic-only">
+                                Apenas Produtos Orgânicos
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="association-select">Associação:</label>
+                            <select id="association-select" class="form-select">
+                                <option value="">Todas as Associações</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="products-section" class="mb-5">
+            <h2 class="mb-3">
+                <i class="fas fa-shopping-basket me-2"></i>
+                Produtos Disponíveis
+            </h2>
+            <div class="row" id="products-container">
+                <!-- Produtos serão carregados aqui -->
+                <div class="col-12 text-center">
+                    <p>Selecione uma associação no mapa para ver os produtos disponíveis.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="recommendations-section" class="mb-5">
+            <h2 class="mb-3">
+                <i class="fas fa-thumbs-up me-2"></i>
+                Recomendações Personalizadas
+            </h2>
+            <div class="row" id="recommendations-container">
+                <!-- Recomendações serão carregadas aqui -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal para avaliação de produtos -->
+    <div class="modal fade" id="ratingModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Avaliar Produto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="rating-form">
+                        <input type="hidden" id="produto-id">
+                        <div class="mb-3">
+                            <label class="form-label">Produto: <span id="produto-nome"></span></label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Sua Avaliação:</label>
+                            <div class="rating-input-container text-center">
+                                <span class="rating-input" data-value="1"><i class="far fa-star"></i></span>
+                                <span class="rating-input" data-value="2"><i class="far fa-star"></i></span>
+                                <span class="rating-input" data-value="3"><i class="far fa-star"></i></span>
+                                <span class="rating-input" data-value="4"><i class="far fa-star"></i></span>
+                                <span class="rating-input" data-value="5"><i class="far fa-star"></i></span>
+                            </div>
+                            <input type="hidden" id="rating-value" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="comentario" class="form-label">Comentário (opcional):</label>
+                            <textarea class="form-control" id="comentario" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="submit-rating">Enviar Avaliação</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-light py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <p>&copy; 2025 Sistema de Recomendação de Produtos Locais</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p>Desenvolvido para o Projeto de IA - UnB</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuração inicial
+        let map;
+        let userMarker;
+        let associationMarkers = [];
+        let userLocation = [-15.7939, -47.8828]; // Padrão: Brasília
+        let selectedAssociationId = null;
+        let currentMonth = new Date().getMonth() + 1; // Mês atual (1-12)
+        
+        // Inicializar o mapa quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            // Definir o mês atual no seletor
+            document.getElementById('month-select').value = currentMonth;
+            
+            // Inicializar o mapa
+            initMap();
+            
+            // Carregar recomendações iniciais
+            loadRecommendations();
+            
+            // Configurar eventos
+            setupEventListeners();
+            
+            // Esconder o loading após carregar tudo
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+            }, 1000);
+        });
+        
+        // Inicializar o mapa Leaflet
+        function initMap() {
+            map = L.map('map').setView(userLocation, 11);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            // Adicionar marcador do usuário
+            userMarker = L.marker(userLocation, {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34]
+                })
+            }).addTo(map);
+            userMarker.bindPopup('Sua localização').openPopup();
+            
+            // Tentar obter a localização do usuário
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    userLocation = [position.coords.latitude, position.coords.longitude];
+                    userMarker.setLatLng(userLocation);
+                    map.setView(userLocation, 11);
+                    loadMapData();
+                }, function() {
+                    // Se falhar, usar a localização padrão
+                    loadMapData();
+                });
+            } else {
+                // Se geolocalização não for suportada
+                loadMapData();
+            }
+        }
+        
+        // Carregar dados do mapa a partir da API
+        function loadMapData() {
+            fetch(`/api/mapa?lat=${userLocation[0]}&lon=${userLocation[1]}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Limpar marcadores existentes
+                    associationMarkers.forEach(marker => map.removeLayer(marker));
+                    associationMarkers = [];
+                    
+                    // Preencher o seletor de associações
+                    const associationSelect = document.getElementById('association-select');
+                    associationSelect.innerHTML = '<option value="">Todas as Associações</option>';
+                    
+                    // Adicionar marcadores para cada associação
+                    data.forEach(assoc => {
+                        const marker = L.marker([assoc.lat, assoc.lon], {
+                            icon: L.icon({
+                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34]
+                            })
+                        }).addTo(map);
+                        
+                        marker.bindPopup(`
+                            <strong>${assoc.nome}</strong><br>
+                            Região: ${assoc.regiao}<br>
+                            Distância: ${assoc.distancia} km<br>
+                            Produtos: ${assoc.num_produtos}<br>
+                            <button class="btn btn-sm btn-primary mt-2 view-products" 
+                                    data-association-id="${assoc.id}">
+                                Ver Produtos
+                            </button>
+                        `);
+                        
+                        marker.on('click', function() {
+                            selectedAssociationId = assoc.id;
+                        });
+                        
+                        associationMarkers.push(marker);
+                        
+                        // Adicionar ao seletor de associações
+                        const option = document.createElement('option');
+                        option.value = assoc.id;
+                        option.textContent = `${assoc.nome} (${assoc.distancia} km)`;
+                        associationSelect.appendChild(option);
+                    });
+                    
+                    // Adicionar eventos aos botões nos popups
+                    setTimeout(() => {
+                        document.querySelectorAll('.view-products').forEach(button => {
+                            button.addEventListener('click', function() {
+                                const associationId = this.getAttribute('data-association-id');
+                                selectedAssociationId = associationId;
+                                document.getElementById('association-select').value = associationId;
+                                loadProducts();
+                                
+                                // Scroll para a seção de produtos
+                                document.getElementById('products-section').scrollIntoView({
+                                    behavior: 'smooth'
+                                });
+                            });
+                        });
+                    }, 500);
+                })
+                .catch(error => console.error('Erro ao carregar dados do mapa:', error));
+        }
+        
+        // Carregar produtos com base nos filtros selecionados
+        function loadProducts() {
+            const organicOnly = document.getElementById('organic-only').checked;
+            const month = document.getElementById('month-select').value;
+            const associationId = selectedAssociationId || document.getElementById('association-select').value;
+            
+            let url = `/api/produtos?mes=${month}`;
+            if (organicOnly) url += '&organicos=true';
+            if (associationId) url += `&associacao_id=${associationId}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('products-container');
+                    
+                    if (data.length === 0) {
+                        container.innerHTML = `
+                            <div class="col-12 text-center">
+                                <p>Nenhum produto encontrado com os filtros selecionados.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.forEach(produto => {
+                        // Converter meses para nomes
+                        const mesesNomes = {
+                            1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun',
+                            7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'
+                        };
+                        
+                        let mesesDisponiveis = '';
+                        if (produto.meses_disponibilidade && produto.meses_disponibilidade.length > 0) {
+                            mesesDisponiveis = produto.meses_disponibilidade
+                                .map(m => mesesNomes[m])
+                                .join(', ');
+                        } else {
+                            mesesDisponiveis = 'Ano todo';
+                        }
+                        
+                        // Gerar estrelas para avaliação
+                        const rating = produto.media_avaliacoes || 0;
+                        let stars = '';
+                        for (let i = 1; i <= 5; i++) {
+                            if (i <= rating) {
+                                stars += '<i class="fas fa-star star-rating"></i>';
+                            } else {
+                                stars += '<i class="far fa-star empty-star"></i>';
+                            }
+                        }
+                        
+                        html += `
+                            <div class="col-md-4 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <span>${produto.nome}</span>
+                                        <span class="badge ${produto.categoria === 'Fruta' ? 'bg-success' : 'bg-info'}">${produto.categoria}</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-2">
+                                            ${produto.organico ? '<span class="badge badge-organic mb-2">Orgânico</span>' : ''}
+                                            <p class="price">R$ ${produto.preco.toFixed(2)}</p>
+                                            <p class="seasonal-months">
+                                                <i class="fas fa-calendar-alt me-1"></i>
+                                                Disponível: ${mesesDisponiveis}
+                                            </p>
+                                            <div class="mb-2">
+                                                ${stars} (${rating.toFixed(1)})
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <button class="btn btn-sm btn-outline-primary rate-product" 
+                                                data-produto-id="${produto.id}" 
+                                                data-produto-nome="${produto.nome}">
+                                            <i class="fas fa-star me-1"></i> Avaliar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = html;
+                    
+                    // Adicionar eventos aos botões de avaliação
+                    document.querySelectorAll('.rate-product').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const produtoId = this.getAttribute('data-produto-id');
+                            const produtoNome = this.getAttribute('data-produto-nome');
+                            
+                            document.getElementById('produto-id').value = produtoId;
+                            document.getElementById('produto-nome').textContent = produtoNome;
+                            
+                            // Resetar estrelas
+                            document.querySelectorAll('.rating-input i').forEach(star => {
+                                star.className = 'far fa-star';
+                            });
+                            document.getElementById('rating-value').value = '';
+                            
+                            // Abrir modal
+                            const ratingModal = new bootstrap.Modal(document.getElementById('ratingModal'));
+                            ratingModal.show();
+                        });
+                    });
+                })
+                .catch(error => console.error('Erro ao carregar produtos:', error));
+        }
+        
+        // Carregar recomendações personalizadas
+        function loadRecommendations() {
+            const month = document.getElementById('month-select').value;
+            
+            fetch(`/api/recomendacoes?lat=${userLocation[0]}&lon=${userLocation[1]}&mes=${month}`)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('recommendations-container');
+                    
+                    if (data.length === 0) {
+                        container.innerHTML = `
+                            <div class="col-12 text-center">
+                                <p>Nenhuma recomendação disponível no momento.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.forEach(produto => {
+                        // Gerar estrelas para avaliação
+                        const rating = produto.media_avaliacoes || 0;
+                        let stars = '';
+                        for (let i = 1; i <= 5; i++) {
+                            if (i <= rating) {
+                                stars += '<i class="fas fa-star star-rating"></i>';
+                            } else {
+                                stars += '<i class="far fa-star empty-star"></i>';
+                            }
+                        }
+                        
+                        html += `
+                            <div class="col-md-4 mb-4">
+                                <div class="card h-100 position-relative">
+                                    <div class="recommendation-score">${produto.pontuacao_recomendacao}</div>
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <span>${produto.nome}</span>
+                                        <span class="badge ${produto.categoria === 'Fruta' ? 'bg-success' : 'bg-info'}">${produto.categoria}</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-2">
+                                            ${produto.organico ? '<span class="badge badge-organic mb-2">Orgânico</span>' : ''}
+                                            <p class="price">R$ ${produto.preco.toFixed(2)}</p>
+                                            <p>
+                                                <strong>Associação:</strong> ${produto.associacao_nome}
+                                            </p>
+                                            <p class="distance">
+                                                <i class="fas fa-map-marker-alt me-1"></i>
+                                                Distância: ${produto.distancia} km
+                                            </p>
+                                            <div class="mb-2">
+                                                ${stars} (${rating.toFixed(1)})
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <button class="btn btn-sm btn-outline-primary rate-product" 
+                                                data-produto-id="${produto.id}" 
+                                                data-produto-nome="${produto.nome}">
+                                            <i class="fas fa-star me-1"></i> Avaliar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = html;
+                    
+                    // Adicionar eventos aos botões de avaliação
+                    document.querySelectorAll('.rate-product').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const produtoId = this.getAttribute('data-produto-id');
+                            const produtoNome = this.getAttribute('data-produto-nome');
+                            
+                            document.getElementById('produto-id').value = produtoId;
+                            document.getElementById('produto-nome').textContent = produtoNome;
+                            
+                            // Resetar estrelas
+                            document.querySelectorAll('.rating-input i').forEach(star => {
+                                star.className = 'far fa-star';
+                            });
+                            document.getElementById('rating-value').value = '';
+                            
+                            // Abrir modal
+                            const ratingModal = new bootstrap.Modal(document.getElementById('ratingModal'));
+                            ratingModal.show();
+                        });
+                    });
+                })
+                .catch(error => console.error('Erro ao carregar recomendações:', error));
+        }
+        
+        // Configurar eventos
+        function setupEventListeners() {
+            // Evento de mudança no seletor de mês
+            document.getElementById('month-select').addEventListener('change', function() {
+                currentMonth = parseInt(this.value);
+                loadProducts();
+                loadRecommendations();
+            });
+            
+            // Evento de mudança no checkbox de orgânicos
+            document.getElementById('organic-only').addEventListener('change', function() {
+                loadProducts();
+            });
+            
+            // Evento de mudança no seletor de associação
+            document.getElementById('association-select').addEventListener('change', function() {
+                selectedAssociationId = this.value;
+                loadProducts();
+            });
+            
+            // Eventos para as estrelas de avaliação
+            document.querySelectorAll('.rating-input').forEach(star => {
+                star.addEventListener('mouseover', function() {
+                    const value = parseInt(this.getAttribute('data-value'));
+                    
+                    document.querySelectorAll('.rating-input').forEach(s => {
+                        const starValue = parseInt(s.getAttribute('data-value'));
+                        if (starValue <= value) {
+                            s.querySelector('i').className = 'fas fa-star';
+                        } else {
+                            s.querySelector('i').className = 'far fa-star';
+                        }
+                    });
+                });
+                
+                star.addEventListener('mouseout', function() {
+                    const currentValue = document.getElementById('rating-value').value;
+                    
+                    if (!currentValue) {
+                        document.querySelectorAll('.rating-input i').forEach(s => {
+                            s.className = 'far fa-star';
+                        });
+                        return;
+                    }
+                    
+                    document.querySelectorAll('.rating-input').forEach(s => {
+                        const starValue = parseInt(s.getAttribute('data-value'));
+                        if (starValue <= parseInt(currentValue)) {
+                            s.querySelector('i').className = 'fas fa-star';
+                        } else {
+                            s.querySelector('i').className = 'far fa-star';
+                        }
+                    });
+                });
+                
+                star.addEventListener('click', function() {
+                    const value = this.getAttribute('data-value');
+                    document.getElementById('rating-value').value = value;
+                    
+                    document.querySelectorAll('.rating-input').forEach(s => {
+                        const starValue = parseInt(s.getAttribute('data-value'));
+                        if (starValue <= parseInt(value)) {
+                            s.querySelector('i').className = 'fas fa-star';
+                        } else {
+                            s.querySelector('i').className = 'far fa-star';
+                        }
+                    });
+                });
+            });
+            
+            // Evento para enviar avaliação
+            document.getElementById('submit-rating').addEventListener('click', function() {
+                const produtoId = document.getElementById('produto-id').value;
+                const pontuacao = document.getElementById('rating-value').value;
+                const comentario = document.getElementById('comentario').value;
+                
+                if (!pontuacao) {
+                    alert('Por favor, selecione uma avaliação de 1 a 5 estrelas.');
+                    return;
+                }
+                
+                // Enviar avaliação para a API
+                fetch('/api/avaliar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        produto_id: produtoId,
+                        pontuacao: parseInt(pontuacao),
+                        comentario: comentario
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Fechar modal
+                        bootstrap.Modal.getInstance(document.getElementById('ratingModal')).hide();
+                        
+                        // Recarregar produtos e recomendações para atualizar as avaliações
+                        loadProducts();
+                        loadRecommendations();
+                        
+                        // Mostrar mensagem de sucesso
+                        alert('Avaliação enviada com sucesso!');
+                    } else {
+                        alert('Erro ao enviar avaliação: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao enviar avaliação:', error);
+                    alert('Erro ao enviar avaliação. Por favor, tente novamente.');
+                });
+            });
+            
+            // Eventos de navegação suave
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    document.querySelector(targetId).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+        }
+    </script>
+</body>
+</html>

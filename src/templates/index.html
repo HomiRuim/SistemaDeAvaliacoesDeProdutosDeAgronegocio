@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Recomendação de Produtos Locais</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .card {
+            margin-bottom: 20px;
+            transition: transform 0.3s;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-img-top {
+            height: 180px;
+            object-fit: cover;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        .badge {
+            margin-right: 5px;
+        }
+        .star-rating {
+            color: #ffc107;
+            font-size: 1.2rem;
+        }
+        .empty-star {
+            color: #e0e0e0;
+        }
+        .filter-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .recommendation-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+        }
+        .algorithm-toggle {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .algorithm-info {
+            display: inline-block;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .algorithm-description {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4 text-center">Sistema de Recomendação de Produtos Locais</h1>
+        
+        <!-- Algoritmo Toggle Section -->
+        <div class="algorithm-toggle">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h5>Algoritmo de Recomendação:</h5>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="algoritmoToggle">
+                        <label class="form-check-label" for="algoritmoToggle">
+                            <span id="algoritmoLabel">KNN</span>
+                        </label>
+                        <span class="algorithm-info" id="algoritmoInfo">K-Nearest Neighbors</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="algorithm-description" id="knnDescription">
+                        <strong>KNN (K-Nearest Neighbors):</strong> Recomenda produtos com base em usuários com preferências semelhantes às suas. Encontra os "vizinhos mais próximos" em termos de gostos e sugere produtos que eles gostaram.
+                    </div>
+                    <div class="algorithm-description" id="svdDescription" style="display: none;">
+                        <strong>SVD (Singular Value Decomposition):</strong> Utiliza decomposição matricial para identificar padrões ocultos nas avaliações. Captura relações complexas entre usuários e produtos para gerar recomendações personalizadas.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <!-- Mapa -->
+                <div id="map"></div>
+            </div>
+            <div class="col-md-4">
+                <!-- Filtros -->
+                <div class="filter-section">
+                    <h4>Filtros</h4>
+                    <div class="mb-3">
+                        <label for="mesSelect" class="form-label">Mês:</label>
+                        <select class="form-select" id="mesSelect">
+                            <option value="1">Janeiro</option>
+                            <option value="2">Fevereiro</option>
+                            <option value="3">Março</option>
+                            <option value="4">Abril</option>
+                            <option value="5" selected>Maio</option>
+                            <option value="6">Junho</option>
+                            <option value="7">Julho</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Setembro</option>
+                            <option value="10">Outubro</option>
+                            <option value="11">Novembro</option>
+                            <option value="12">Dezembro</option>
+                        </select>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="apenasOrganicos">
+                        <label class="form-check-label" for="apenasOrganicos">
+                            Apenas produtos orgânicos
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="associacaoSelect" class="form-label">Associação:</label>
+                        <select class="form-select" id="associacaoSelect">
+                            <option value="">Todas as associações</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary w-100" id="filtrarBtn">Aplicar Filtros</button>
+                </div>
+                
+                <!-- Localização do Usuário -->
+                <div class="filter-section">
+                    <h4>Sua Localização</h4>
+                    <div class="mb-3">
+                        <label for="latInput" class="form-label">Latitude:</label>
+                        <input type="number" class="form-control" id="latInput" value="-15.7939" step="0.0001">
+                    </div>
+                    <div class="mb-3">
+                        <label for="lonInput" class="form-label">Longitude:</label>
+                        <input type="number" class="form-control" id="lonInput" value="-47.8828" step="0.0001">
+                    </div>
+                    <button class="btn btn-secondary w-100" id="atualizarLocalizacaoBtn">Atualizar Localização</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recomendações -->
+        <div class="mt-4">
+            <h2>Recomendações Personalizadas</h2>
+            <div class="row" id="recomendacoesContainer"></div>
+        </div>
+        
+        <!-- Produtos -->
+        <div class="mt-4">
+            <h2>Produtos Disponíveis</h2>
+            <div class="row" id="produtosContainer"></div>
+        </div>
+        
+        <!-- Modal de Avaliação -->
+        <div class="modal fade" id="avaliacaoModal" tabindex="-1" aria-labelledby="avaliacaoModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="avaliacaoModalLabel">Avaliar Produto</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="produtoIdInput">
+                        <div class="mb-3">
+                            <label for="pontuacaoSelect" class="form-label">Pontuação:</label>
+                            <select class="form-select" id="pontuacaoSelect">
+                                <option value="5">5 estrelas - Excelente</option>
+                                <option value="4">4 estrelas - Muito bom</option>
+                                <option value="3">3 estrelas - Bom</option>
+                                <option value="2">2 estrelas - Regular</option>
+                                <option value="1">1 estrela - Ruim</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="comentarioTextarea" class="form-label">Comentário (opcional):</label>
+                            <textarea class="form-control" id="comentarioTextarea" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="enviarAvaliacaoBtn">Enviar Avaliação</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        // Variáveis globais
+        let map;
+        let userMarker;
+        let associacaoMarkers = [];
+        let associacoes = [];
+        let produtos = [];
+        let recomendacoes = [];
+        let algoritmoAtual = 'knn';
+        
+        // Inicializar mapa
+        function initMap() {
+            // Coordenadas iniciais (Brasília)
+            const lat = parseFloat(document.getElementById('latInput').value);
+            const lon = parseFloat(document.getElementById('lonInput').value);
+            
+            // Criar mapa
+            map = L.map('map').setView([lat, lon], 10);
+            
+            // Adicionar camada de mapa
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            // Adicionar marcador do usuário
+            userMarker = L.marker([lat, lon], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(map);
+            userMarker.bindPopup('Sua localização').openPopup();
+            
+            // Carregar dados do mapa
+            carregarDadosMapa();
+        }
+        
+        // Carregar dados do mapa
+        function carregarDadosMapa() {
+            const lat = parseFloat(document.getElementById('latInput').value);
+            const lon = parseFloat(document.getElementById('lonInput').value);
+            
+            fetch(`/api/mapa?lat=${lat}&lon=${lon}`)
+                .then(response => response.json())
+                .then(data => {
+                    associacoes = data;
+                    
+                    // Limpar marcadores existentes
+                    associacaoMarkers.forEach(marker => map.removeLayer(marker));
+                    associacaoMarkers = [];
+                    
+                    // Adicionar marcadores para cada associação
+                    associacoes.forEach(assoc => {
+                        const marker = L.marker([assoc.lat, assoc.lon], {
+                            icon: L.icon({
+                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34],
+                                shadowSize: [41, 41]
+                            })
+                        }).addTo(map);
+                        
+                        marker.bindPopup(`
+                            <strong>${assoc.nome}</strong><br>
+                            Região: ${assoc.regiao}<br>
+                            Distância: ${assoc.distancia.toFixed(2)} km<br>
+                            Produtos: ${assoc.num_produtos}<br>
+                            <button class="btn btn-sm btn-primary mt-2" onclick="filtrarPorAssociacao(${assoc.id})">Ver Produtos</button>
+                        `);
+                        
+                        associacaoMarkers.push(marker);
+                    });
+                    
+                    // Preencher select de associações
+                    const associacaoSelect = document.getElementById('associacaoSelect');
+                    associacaoSelect.innerHTML = '<option value="">Todas as associações</option>';
+                    
+                    associacoes.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(assoc => {
+                        const option = document.createElement('option');
+                        option.value = assoc.id;
+                        option.textContent = `${assoc.nome} (${assoc.distancia.toFixed(2)} km)`;
+                        associacaoSelect.appendChild(option);
+                    });
+                    
+                    // Carregar produtos
+                    carregarProdutos();
+                    
+                    // Carregar recomendações
+                    carregarRecomendacoes();
+                })
+                .catch(error => console.error('Erro ao carregar dados do mapa:', error));
+        }
+        
+        // Carregar produtos
+        function carregarProdutos() {
+            const mes = document.getElementById('mesSelect').value;
+            const organicos = document.getElementById('apenasOrganicos').checked;
+            const associacaoId = document.getElementById('associacaoSelect').value;
+            
+            let url = `/api/produtos?mes=${mes}`;
+            if (organicos) {
+                url += '&organicos=true';
+            }
+            if (associacaoId) {
+                url += `&associacao_id=${associacaoId}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    produtos = data;
+                    renderizarProdutos();
+                })
+                .catch(error => console.error('Erro ao carregar produtos:', error));
+        }
+        
+        // Renderizar produtos
+        function renderizarProdutos() {
+            const container = document.getElementById('produtosContainer');
+            container.innerHTML = '';
+            
+            if (produtos.length === 0) {
+                container.innerHTML = '<div class="col-12"><div class="alert alert-info">Nenhum produto encontrado com os filtros selecionados.</div></div>';
+                return;
+            }
+            
+            produtos.forEach(produto => {
+                const associacao = associacoes.find(a => a.id === produto.associacao_id);
+                const associacaoNome = associacao ? associacao.nome : 'Associação não encontrada';
+                const distancia = associacao ? associacao.distancia.toFixed(2) : 'N/A';
+                
+                const col = document.createElement('div');
+                col.className = 'col-md-4 mb-4';
+                
+                col.innerHTML = `
+                    <div class="card h-100">
+                        <img src="https://source.unsplash.com/300x200/?${encodeURIComponent(produto.nome)},${encodeURIComponent(produto.categoria)}" class="card-img-top" alt="${produto.nome}">
+                        <div class="card-body">
+                            <h5 class="card-title">${produto.nome}</h5>
+                            <p class="card-text">
+                                <span class="badge bg-primary">${produto.categoria}</span>
+                                ${produto.organico ? '<span class="badge bg-success">Orgânico</span>' : ''}
+                                <span class="badge bg-info">R$ ${produto.preco.toFixed(2)}</span>
+                            </p>
+                            <p class="card-text">
+                                <small class="text-muted">Associação: ${associacaoNome}</small><br>
+                                <small class="text-muted">Distância: ${distancia} km</small>
+                            </p>
+                            <div class="star-rating mb-2">
+                                ${renderStars(produto.media_avaliacoes)}
+                                <small class="text-muted">(${produto.media_avaliacoes.toFixed(1)})</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalAvaliacao(${produto.id})">Avaliar</button>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(col);
+            });
+        }
+        
+        // Carregar recomendações
+        function carregarRecomendacoes() {
+            const lat = parseFloat(document.getElementById('latInput').value);
+            const lon = parseFloat(document.getElementById('lonInput').value);
+            const mes = document.getElementById('mesSelect').value;
+            
+            fetch(`/api/recomendacoes?lat=${lat}&lon=${lon}&mes=${mes}`)
+                .then(response => response.json())
+                .then(data => {
+                    recomendacoes = data;
+                    renderizarRecomendacoes();
+                    
+                    // Atualizar informação do algoritmo
+                    if (recomendacoes.length > 0) {
+                        algoritmoAtual = recomendacoes[0].algoritmo.toLowerCase();
+                        atualizarInterfaceAlgoritmo();
+                    }
+                })
+                .catch(error => console.error('Erro ao carregar recomendações:', error));
+        }
+        
+        // Renderizar recomendações
+        function renderizarRecomendacoes() {
+            const container = document.getElementById('recomendacoesContainer');
+            container.innerHTML = '';
+            
+            if (recomendacoes.length === 0) {
+                container.innerHTML = '<div class="col-12"><div class="alert alert-info">Nenhuma recomendação disponível.</div></div>';
+                return;
+            }
+            
+            recomendacoes.forEach((produto, index) => {
+                const col = document.createElement('div');
+                col.className = 'col-md-4 mb-4';
+                
+                col.innerHTML = `
+                    <div class="card h-100">
+                        <div class="recommendation-badge badge bg-danger">#${index + 1} Recomendado</div>
+                        <img src="https://source.unsplash.com/300x200/?${encodeURIComponent(produto.nome)},${encodeURIComponent(produto.categoria)}" class="card-img-top" alt="${produto.nome}">
+                        <div class="card-body">
+                            <h5 class="card-title">${produto.nome}</h5>
+                            <p class="card-text">
+                                <span class="badge bg-primary">${produto.categoria}</span>
+                                ${produto.organico ? '<span class="badge bg-success">Orgânico</span>' : ''}
+                                <span class="badge bg-info">R$ ${produto.preco.toFixed(2)}</span>
+                                <span class="badge bg-warning text-dark">Algoritmo: ${produto.algoritmo}</span>
+                            </p>
+                            <p class="card-text">
+                                <small class="text-muted">Associação: ${produto.associacao_nome}</small><br>
+                                <small class="text-muted">Distância: ${produto.distancia} km</small><br>
+                                <small class="text-muted">Pontuação: ${produto.pontuacao_recomendacao.toFixed(2)}</small>
+                            </p>
+                            <div class="star-rating mb-2">
+                                ${renderStars(produto.media_avaliacoes)}
+                                <small class="text-muted">(${produto.media_avaliacoes.toFixed(1)})</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalAvaliacao(${produto.id})">Avaliar</button>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(col);
+            });
+        }
+        
+        // Renderizar estrelas
+        function renderStars(rating) {
+            let stars = '';
+            for (let i = 1; i <= 5; i++) {
+                if (i <= Math.round(rating)) {
+                    stars += '<i class="bi bi-star-fill">★</i>';
+                } else {
+                    stars += '<i class="bi bi-star empty-star">☆</i>';
+                }
+            }
+            return stars;
+        }
+        
+        // Abrir modal de avaliação
+        function abrirModalAvaliacao(produtoId) {
+            document.getElementById('produtoIdInput').value = produtoId;
+            const modal = new bootstrap.Modal(document.getElementById('avaliacaoModal'));
+            modal.show();
+        }
+        
+        // Filtrar por associação
+        function filtrarPorAssociacao(associacaoId) {
+            document.getElementById('associacaoSelect').value = associacaoId;
+            carregarProdutos();
+        }
+        
+        // Alternar algoritmo
+        function alternarAlgoritmo() {
+            const novoAlgoritmo = algoritmoAtual === 'knn' ? 'svd' : 'knn';
+            
+            fetch('/api/alternar_algoritmo', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ algoritmo: novoAlgoritmo })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    algoritmoAtual = novoAlgoritmo;
+                    atualizarInterfaceAlgoritmo();
+                    carregarRecomendacoes();
+                }
+            })
+            .catch(error => console.error('Erro ao alternar algoritmo:', error));
+        }
+        
+        // Atualizar interface do algoritmo
+        function atualizarInterfaceAlgoritmo() {
+            const toggle = document.getElementById('algoritmoToggle');
+            const label = document.getElementById('algoritmoLabel');
+            const info = document.getElementById('algoritmoInfo');
+            const knnDesc = document.getElementById('knnDescription');
+            const svdDesc = document.getElementById('svdDescription');
+            
+            if (algoritmoAtual === 'svd') {
+                toggle.checked = true;
+                label.textContent = 'SVD';
+                info.textContent = 'Singular Value Decomposition';
+                knnDesc.style.display = 'none';
+                svdDesc.style.display = 'block';
+            } else {
+                toggle.checked = false;
+                label.textContent = 'KNN';
+                info.textContent = 'K-Nearest Neighbors';
+                knnDesc.style.display = 'block';
+                svdDesc.style.display = 'none';
+            }
+        }
+        
+        // Verificar algoritmo atual
+        function verificarAlgoritmoAtual() {
+            fetch('/api/algoritmo')
+                .then(response => response.json())
+                .then(data => {
+                    algoritmoAtual = data.algoritmo;
+                    atualizarInterfaceAlgoritmo();
+                })
+                .catch(error => console.error('Erro ao verificar algoritmo:', error));
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Inicializar mapa
+            initMap();
+            
+            // Verificar algoritmo atual
+            verificarAlgoritmoAtual();
+            
+            // Botão de filtrar
+            document.getElementById('filtrarBtn').addEventListener('click', function() {
+                carregarProdutos();
+            });
+            
+            // Botão de atualizar localização
+            document.getElementById('atualizarLocalizacaoBtn').addEventListener('click', function() {
+                const lat = parseFloat(document.getElementById('latInput').value);
+                const lon = parseFloat(document.getElementById('lonInput').value);
+                
+                // Atualizar marcador do usuário
+                userMarker.setLatLng([lat, lon]);
+                map.setView([lat, lon], 10);
+                
+                // Recarregar dados
+                carregarDadosMapa();
+            });
+            
+            // Botão de enviar avaliação
+            document.getElementById('enviarAvaliacaoBtn').addEventListener('click', function() {
+                const produtoId = document.getElementById('produtoIdInput').value;
+                const pontuacao = document.getElementById('pontuacaoSelect').value;
+                const comentario = document.getElementById('comentarioTextarea').value;
+                
+                fetch('/api/avaliar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        produto_id: produtoId,
+                        pontuacao: pontuacao,
+                        comentario: comentario
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Fechar modal
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('avaliacaoModal'));
+                        modal.hide();
+                        
+                        // Limpar campos
+                        document.getElementById('comentarioTextarea').value = '';
+                        
+                        // Recarregar produtos e recomendações
+                        carregarProdutos();
+                        carregarRecomendacoes();
+                        
+                        // Mostrar alerta de sucesso
+                        alert('Avaliação enviada com sucesso!');
+                    }
+                })
+                .catch(error => console.error('Erro ao enviar avaliação:', error));
+            });
+            
+            // Toggle de algoritmo
+            document.getElementById('algoritmoToggle').addEventListener('change', function() {
+                alternarAlgoritmo();
+            });
+        });
+    </script>
+</body>
+</html>
